@@ -54,7 +54,7 @@ function draw () {
 		const r = results[t.id];
 		const val = r ? r.text : "测试中…";
 		const tag = r ? `<span class="tag t-${r.level}">${{good: "很好", ok: "一般", bad: "差"}[r.level]}</span>` : `<span class="tag t-wait">…</span>`;
-		return `<div class="row"><div class="name">${t.name}<small>${t.note}</small></div><div class="val">${val}${tag}</div></div>`;
+		return `<div class="row"><div class="name">${t.name}<small>${r?.extra || t.note}</small></div><div class="val">${val}${tag}</div></div>`;
 	}).join("");
 }
 
@@ -82,7 +82,7 @@ async function testDownload () {
 	const r = await withTimeout(timed(`test-5mb.bin${bust()}`), 120000);
 	const mbps = r.bytes / 1048576 / (r.ms / 1000);
 	const first = Math.round(25 / mbps);   // roughly what the first visit of the full site downloads
-	return {value: mbps, text: `${mbps.toFixed(1)} MB/秒（首次打开约 ${first} 秒）`, level: mbps >= 2 ? "good" : mbps >= 0.5 ? "ok" : "bad"};
+	return {value: mbps, text: `${mbps.toFixed(1)} MB/秒`, extra: `第一次打开整个网站约 ${first} 秒`, level: mbps >= 2 ? "good" : mbps >= 0.5 ? "ok" : "bad"};
 }
 
 function testImage (url) {
@@ -128,7 +128,7 @@ async function run () {
 $("again").onclick = run;
 $("copy").onclick = async () => {
 	const text = ["访问测试结果（" + new Date().toLocaleString("zh-CN") + "）",
-		...TESTS.map(t => `${t.name}：${results[t.id]?.text ?? "未完成"}`), $("verdict").textContent].join("\n");
+		...TESTS.map(t => `${t.name}：${results[t.id]?.text ?? "未完成"}${results[t.id]?.extra ? "（" + results[t.id].extra + "）" : ""}`), $("verdict").textContent].join("\n");
 	try { await navigator.clipboard.writeText(text); $("copy").textContent = "已复制"; } catch (e) { prompt("请手动复制：", text); }
 	setTimeout(() => $("copy").textContent = "复制结果文字", 1500);
 };
