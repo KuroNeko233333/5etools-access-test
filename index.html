@@ -11,17 +11,18 @@
 	body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif; }
 	main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
 	h1 { margin: 0 0 4px; font-size: 22px; color: var(--red); }
-	.sub { color: var(--mute); font-size: 14px; margin-bottom: 20px; }
+	h2 { margin: 22px 0 8px; font-size: 15px; color: var(--mute); font-weight: 600; }
+	.sub { color: var(--mute); font-size: 14px; margin-bottom: 8px; }
 	.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px 16px; }
 	.row { display: flex; gap: 12px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--line); }
 	.row:last-child { border-bottom: 0; }
-	.name { flex: 1; }
+	.name { flex: 1; min-width: 0; }
 	.name small { display: block; color: var(--mute); font-size: 13px; }
 	.val { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 	.tag { display: inline-block; min-width: 3.2em; text-align: center; padding: 1px 8px; border-radius: 999px; font-size: 13px; font-weight: 600; margin-left: 6px; }
-	.t-good { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
-	.t-ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, transparent); }
-	.t-bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+	.t-good { color: var(--good); background: rgba(47, 125, 50, .14); }
+	.t-ok { color: var(--ok); background: rgba(176, 111, 0, .16); }
+	.t-bad { color: var(--bad); background: rgba(179, 38, 30, .14); }
 	.t-wait { color: var(--mute); }
 	#verdict { margin: 20px 0 12px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-weight: 600; }
 	button { font: inherit; padding: 8px 18px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; margin-right: 8px; }
@@ -31,69 +32,107 @@
 <body>
 <main>
 	<h1>✦ 访问测试</h1>
-	<div class="sub">打开后会自动测试，大约需要 10～60 秒。测完请<b>截图发给我</b>。本页不收集、也不上传任何信息。</div>
-	<div class="card" id="rows"></div>
+	<div class="sub">打开后会自动测试，最多约 2 分钟。请等到下面出现<b>「结论」</b>再截图发给我。本页不收集、也不上传任何信息。</div>
+	<h2>这个网站</h2>
+	<div class="card" id="rows-site"></div>
+	<h2>同一个 5MB 文件，从不同地方下载</h2>
+	<div class="card" id="rows-dl"></div>
+	<h2>图片网站</h2>
+	<div class="card" id="rows-img"></div>
 	<div id="verdict">正在测试……</div>
 	<button id="again">再测一次</button><button id="copy">复制结果文字</button>
-	<div class="tip">测试内容：① 这个网站的反应速度（连续打开 20 个小文件）② 下载速度（下载一个 5MB 的测试文件）③ 两个图片网站能否打开。<br>可以分别用 Wi-Fi 和手机流量各测一次。</div>
+	<div class="tip">每个下载最多测 25 秒，到时间就按已经下载到的部分算速度。可以分别用 Wi-Fi 和手机流量各测一次。</div>
 </main>
 <script>
 "use strict";
+const REPO = "KuroNeko233333/5etools-access-test";
 const TESTS = [
-	{id: "lat", name: "网站反应速度", note: "打开 20 个小文件，平均每个要多久"},
-	{id: "dl", name: "下载速度", note: "下载 5MB 测试文件"},
-	{id: "img1", name: "图片网站一（国内）", note: "5e.kiwee.top：怪物、职业插图"},
-	{id: "img2", name: "图片网站二（GitHub）", note: "raw.githubusercontent.com：备用图片来源"},
+	{id: "lat", box: "site", name: "反应速度", note: "打开 20 个小文件，平均每个要多久"},
+	{id: "gh", box: "dl", name: "GitHub 网站（现在这个）", note: "kuroneko233333.github.io", url: "test-5mb.bin"},
+	{id: "jsd", box: "dl", name: "jsDelivr 加速", note: "cdn.jsdelivr.net", url: `https://cdn.jsdelivr.net/gh/${REPO}@main/test-5mb.bin`},
+	{id: "jsdf", box: "dl", name: "jsDelivr 加速（另一条线路）", note: "fastly.jsdelivr.net", url: `https://fastly.jsdelivr.net/gh/${REPO}@main/test-5mb.bin`},
+	{id: "raw", box: "dl", name: "GitHub 原始文件", note: "raw.githubusercontent.com", url: `https://raw.githubusercontent.com/${REPO}/main/test-5mb.bin`},
+	{id: "img1", box: "img", name: "图片网站一（国内）", note: "5e.kiwee.top：怪物、职业插图"},
+	{id: "img2", box: "img", name: "图片网站二（GitHub）", note: "raw.githubusercontent.com：备用图片来源"},
 ];
-const results = {};
+const results = {}, progress = {};
 const $ = id => document.getElementById(id);
 const bust = () => "?t=" + Date.now() + Math.random().toString(36).slice(2, 7);
+const step = (id, text) => { progress[id] = text; draw(); };
 
 function draw () {
-	$("rows").innerHTML = TESTS.map(t => {
-		const r = results[t.id];
-		const val = r ? r.text : "测试中…";
-		const tag = r ? `<span class="tag t-${r.level}">${{good: "很好", ok: "一般", bad: "差"}[r.level]}</span>` : `<span class="tag t-wait">…</span>`;
-		return `<div class="row"><div class="name">${t.name}<small>${r?.extra || t.note}</small></div><div class="val">${val}${tag}</div></div>`;
-	}).join("");
-}
-
-async function timed (url, opts) {
-	const t0 = performance.now();
-	const r = await fetch(url, {cache: "no-store", ...opts});
-	if (!r.ok) throw new Error("HTTP " + r.status);
-	const buf = await r.arrayBuffer();
-	return {ms: performance.now() - t0, bytes: buf.byteLength};
+	for (const box of ["site", "dl", "img"]) {
+		$("rows-" + box).innerHTML = TESTS.filter(t => t.box === box).map(t => {
+			const r = results[t.id];
+			const val = r ? r.text : (progress[t.id] || "等待中…");
+			const tag = r ? `<span class="tag t-${r.level}">${{good: "很好", ok: "一般", bad: "差"}[r.level]}</span>` : `<span class="tag t-wait">…</span>`;
+			return `<div class="row"><div class="name">${t.name}<small>${(r && r.extra) || t.note}</small></div><div class="val">${val}${tag}</div></div>`;
+		}).join("");
+	}
 }
 
 function withTimeout (p, ms) {
 	return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("超时")), ms))]);
 }
 
-async function testLatency () {
-	const times = [];
-	for (let i = 0; i < 20; ++i) times.push((await withTimeout(timed(`small/${i}.json${bust()}`), 15000)).ms);
-	times.sort((a, b) => a - b);
-	const avg = times.slice(0, 18).reduce((a, b) => a + b, 0) / 18;   // drop the two slowest
-	return {value: avg, text: `${Math.round(avg)} 毫秒`, level: avg < 300 ? "good" : avg < 900 ? "ok" : "bad"};
+async function timed (url) {
+	const t0 = performance.now();
+	const r = await fetch(url, {cache: "no-store"});
+	if (!r.ok) throw new Error("HTTP " + r.status);
+	await r.arrayBuffer();
+	return performance.now() - t0;
 }
 
-async function testDownload () {
-	const r = await withTimeout(timed(`test-5mb.bin${bust()}`), 120000);
-	const mbps = r.bytes / 1048576 / (r.ms / 1000);
-	const first = Math.round(25 / mbps);   // roughly what the first visit of the full site downloads
-	return {value: mbps, text: `${mbps.toFixed(1)} MB/秒`, extra: `第一次打开整个网站约 ${first} 秒`, level: mbps >= 2 ? "good" : mbps >= 0.5 ? "ok" : "bad"};
+async function testLatency () {
+	const times = [], t0 = performance.now();
+	let fails = 0;
+	for (let i = 0; i < 20 && performance.now() - t0 < 30000; ++i) {
+		try { times.push(await withTimeout(timed(`small/${i}.json${bust()}`), 10000)); } catch (e) { fails++; }
+		step("lat", `已完成 ${times.length}/20${fails ? `，失败 ${fails}` : ""}`);
+	}
+	if (!times.length) return {text: "打不开", extra: "30 秒内一个小文件都没拿到", level: "bad"};
+	times.sort((a, b) => a - b);
+	const keep = times.slice(0, Math.max(1, times.length - 2));
+	const avg = keep.reduce((a, b) => a + b, 0) / keep.length;
+	const partial = times.length < 20 ? `30 秒内只完成 ${times.length}/20 个` : "";
+	return {text: `${Math.round(avg)} 毫秒`, extra: partial || (fails ? `有 ${fails} 个失败` : ""),
+		level: partial || fails ? "bad" : avg < 300 ? "good" : avg < 900 ? "ok" : "bad"};
+}
+
+// reads the file as it arrives; stops after 25 seconds and rates what arrived by then
+async function testDownload (id, url) {
+	const ctl = new AbortController(), t0 = performance.now();
+	const timer = setTimeout(() => ctl.abort(), 25000);
+	let got = 0;
+	step(id, "连接中…");
+	try {
+		const r = await fetch(url + bust(), {cache: "no-store", signal: ctl.signal});
+		if (!r.ok) throw new Error("HTTP " + r.status);
+		const reader = r.body.getReader();
+		for (;;) {
+			const {done, value} = await reader.read();
+			if (done) break;
+			got += value.byteLength;
+			step(id, `已下载 ${(got / 1048576).toFixed(1)}/5 MB`);
+		}
+	} catch (e) {
+		if (!got) { clearTimeout(timer); return {mbps: 0, text: ctl.signal.aborted ? "25 秒没有动静" : "打不开", level: "bad"}; }
+	}
+	clearTimeout(timer);
+	const secs = (performance.now() - t0) / 1000, mbps = got / 1048576 / secs;
+	const whole = got >= 5 * 1048576;
+	return {mbps, text: `${mbps >= 0.1 ? mbps.toFixed(1) : mbps.toFixed(2)} MB/秒`,
+		extra: whole ? `第一次打开整个网站约 ${Math.round(25 / mbps)} 秒` : `25 秒只下载了 ${(got / 1048576).toFixed(1)} MB`,
+		level: mbps >= 2 ? "good" : mbps >= 0.5 ? "ok" : "bad"};
 }
 
 function testImage (url) {
 	return new Promise(resolve => {
-		const img = new Image();
-		const t0 = performance.now();
+		const img = new Image(), t0 = performance.now();
 		const done = ok => {
 			clearTimeout(timer);
 			const ms = performance.now() - t0;
-			resolve(ok ? {value: ms, text: `${(ms / 1000).toFixed(1)} 秒`, level: ms < 2000 ? "good" : ms < 6000 ? "ok" : "bad"}
-				: {value: null, text: "打不开", level: "bad"});
+			resolve(ok ? {text: `${(ms / 1000).toFixed(1)} 秒`, level: ms < 2000 ? "good" : ms < 6000 ? "ok" : "bad"} : {text: "打不开", level: "bad"});
 		};
 		const timer = setTimeout(() => done(false), 20000);
 		img.onload = () => done(true);
@@ -104,33 +143,37 @@ function testImage (url) {
 
 async function run () {
 	for (const k of Object.keys(results)) delete results[k];
-	$("verdict").textContent = "正在测试……";
+	for (const k of Object.keys(progress)) delete progress[k];
+	const t0 = Date.now();
+	const tick = setInterval(() => { $("verdict").textContent = `正在测试……已用 ${Math.round((Date.now() - t0) / 1000)} 秒（最多约 2 分钟）`; }, 500);
 	$("again").disabled = true;
 	draw();
-	const jobs = {
-		lat: testLatency,
-		dl: testDownload,
-		img1: () => testImage("https://5e.kiwee.top/img/classes/XGE/Barbarian.webp"),
-		img2: () => testImage("https://raw.githubusercontent.com/5etools-mirror-3/5etools-img/main/classes/XGE/Barbarian.webp"),
-	};
-	for (const t of TESTS) {
-		try { results[t.id] = await jobs[t.id](); } catch (e) { results[t.id] = {value: null, text: "失败：" + e.message, level: "bad"}; }
+	const settle = async (id, fn) => {
+		try { results[id] = await fn(); } catch (e) { results[id] = {mbps: 0, text: "失败：" + e.message, level: "bad"}; }
 		draw();
-	}
-	const site = [results.lat.level, results.dl.level];
-	const verdict = site.includes("bad") ? "结论：这个网络打开网页版会比较吃力，建议继续用程序版。"
-		: site.includes("ok") ? "结论：能用，第一次打开要等一会儿，之后会快很多。"
-		: "结论：很顺畅，网页版没问题。";
-	$("verdict").textContent = verdict + (results.img1.level === "bad" && results.img2.level === "bad" ? "（另外：插图可能显示不出来。）" : "");
+	};
+	await Promise.all([   // pictures first and together: they don't compete with the big downloads below
+		settle("img1", () => testImage("https://5e.kiwee.top/img/classes/XGE/Barbarian.webp")),
+		settle("img2", () => testImage("https://raw.githubusercontent.com/5etools-mirror-3/5etools-img/main/classes/XGE/Barbarian.webp")),
+		settle("lat", testLatency),
+	]);
+	for (const t of TESTS.filter(t => t.box === "dl")) await settle(t.id, () => testDownload(t.id, t.url));   // one at a time
+	clearInterval(tick);
+	const dl = TESTS.filter(t => t.box === "dl").map(t => ({t, r: results[t.id]})).sort((a, b) => (b.r.mbps || 0) - (a.r.mbps || 0));
+	const best = dl[0];
+	$("verdict").textContent = !best.r.mbps
+		? "结论：几个地方都下载不了，网页版暂时不适合这个网络。"
+		: `结论：下载最快的是「${best.t.name}」，${best.r.text}。` + (best.r.level === "good" ? "放在那里，网页版会很顺畅。" : best.r.level === "ok" ? "放在那里，网页版能用，第一次打开要等一会儿。" : "都不够快，网页版在这个网络下会比较吃力。");
 	$("again").disabled = false;
 }
 
 $("again").onclick = run;
 $("copy").onclick = async () => {
 	const text = ["访问测试结果（" + new Date().toLocaleString("zh-CN") + "）",
-		...TESTS.map(t => `${t.name}：${results[t.id]?.text ?? "未完成"}${results[t.id]?.extra ? "（" + results[t.id].extra + "）" : ""}`), $("verdict").textContent].join("\n");
+		...TESTS.map(t => `${t.name}：${results[t.id] ? results[t.id].text : "未完成"}${results[t.id] && results[t.id].extra ? "（" + results[t.id].extra + "）" : ""}`),
+		$("verdict").textContent].join("\n");
 	try { await navigator.clipboard.writeText(text); $("copy").textContent = "已复制"; } catch (e) { prompt("请手动复制：", text); }
-	setTimeout(() => $("copy").textContent = "复制结果文字", 1500);
+	setTimeout(() => { $("copy").textContent = "复制结果文字"; }, 1500);
 };
 run();
 </script>
